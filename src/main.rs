@@ -8,7 +8,11 @@ use pnet::datalink::{self, Channel};
 use pnet::packet::{ethernet::EthernetPacket, ipv4::Ipv4Packet, Packet};
 use prettytable::{format, row, Cell, Row, Table};
 use std::io::{self, Write};
+use std::sync::mpsc::{self, TryRecvError};
+use std::thread;
+use std::time::Duration;
 use termion::color;
+use termion::input::TermRead;
 
 fn main() {
     loop {
@@ -47,102 +51,138 @@ fn main() {
             Ok(Channel::Ethernet(_, mut rx)) => {
                 println!("Listening on interface: {}", interface.name);
 
+                // Channel for keyboard input
+                let (tx, rx_input) = mpsc::channel();
+                thread::spawn(move || {
+                    let stdin = io::stdin();
+                    for key in stdin.keys() {
+                        let _ = tx.send(key.unwrap());
+                    }
+                });
+
+                let mut paused = false;
+
                 loop {
-                    // Create a new table for each output to avoid accumulating rows
-                    let mut table = Table::new();
-                    table.add_row(row![
-                        format!("{}Time{}", color::Fg(color::White), color::Fg(color::Reset)),
-                        format!(
-                            "{}Source{}",
-                            color::Fg(color::Green),
-                            color::Fg(color::Reset)
-                        ),
-                        format!(
-                            "{}Destination{}",
-                            color::Fg(color::Blue),
-                            color::Fg(color::Reset)
-                        ),
-                        format!(
-                            "{}Type/Protocol{}",
-                            color::Fg(color::Yellow),
-                            color::Fg(color::Reset)
-                        ),
-                        format!(
-                            "{}Details{}",
-                            color::Fg(color::Magenta),
-                            color::Fg(color::Reset)
-                        ),
-                        format!(
-                            "{}Length{}",
-                            color::Fg(color::Cyan),
-                            color::Fg(color::Reset)
-                        )
-                    ]);
-
-                    // Set the table format
-                    table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-
-                    // Capture packets
-                    match rx.next() {
-                        Ok(packet) => {
-                            let ethernet = EthernetPacket::new(packet).unwrap();
-                            let source = ethernet.get_source().to_string();
-                            let destination = ethernet.get_destination().to_string();
-                            let ethertype = ethernet.get_ethertype();
-                            let length = ethernet.packet().len();
-                            let time = Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-
-                            let details = if ethertype == pnet::packet::ethernet::EtherTypes::Ipv4 {
-                                let ipv4 = Ipv4Packet::new(ethernet.payload()).unwrap();
-                                format!("IPv4 {} -> {}", ipv4.get_source(), ipv4.get_destination())
-                            } else {
-                                format!("{:?}", ethertype)
-                            };
-
-                            table.add_row(Row::new(vec![
-                                Cell::new(&format!(
-                                    "{}{}{}",
-                                    color::Fg(color::White),
-                                    time,
-                                    color::Fg(color::Reset)
-                                )),
-                                Cell::new(&format!(
-                                    "{}{}{}",
-                                    color::Fg(color::Green),
-                                    source,
-                                    color::Fg(color::Reset)
-                                )),
-                                Cell::new(&format!(
-                                    "{}{}{}",
-                                    color::Fg(color::Blue),
-                                    destination,
-                                    color::Fg(color::Reset)
-                                )),
-                                Cell::new(&format!(
-                                    "{}{:?}{}",
-                                    color::Fg(color::Yellow),
-                                    ethertype,
-                                    color::Fg(color::Reset)
-                                )),
-                                Cell::new(&format!(
-                                    "{}{}{}",
-                                    color::Fg(color::Magenta),
-                                    details,
-                                    color::Fg(color::Reset)
-                                )),
-                                Cell::new(&format!(
-                                    "{}{}{}",
-                                    color::Fg(color::Cyan),
-                                    length,
-                                    color::Fg(color::Reset)
-                                )),
-                            ]));
-
-                            table.printstd();
+                    // Check for keyboard input
+                    match rx_input.try_recv() {
+                        Ok(key) => {
+                            if key == termion::event::Key::Char('\n') {
+                                paused = !paused;
+                                if paused {
+                                    println!("Paused. Press Enter to resume.");
+                                } else {
+                                    println!("Resumed. Press Enter to pause.");
+                                }
+                            }
                         }
-                        Err(e) => {
-                            println!("An error occurred while reading: {}", e);
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => break,
+                    }
+
+                    if !paused {
+                        // Create a new table for each output to avoid accumulating rows
+                        let mut table = Table::new();
+                        table.add_row(row![
+                            format!("{}Time{}", color::Fg(color::White), color::Fg(color::Reset)),
+                            format!(
+                                "{}Source{}",
+                                color::Fg(color::Green),
+                                color::Fg(color::Reset)
+                            ),
+                            format!(
+                                "{}Destination{}",
+                                color::Fg(color::Blue),
+                                color::Fg(color::Reset)
+                            ),
+                            format!(
+                                "{}Type/Protocol{}",
+                                color::Fg(color::Yellow),
+                                color::Fg(color::Reset)
+                            ),
+                            format!(
+                                "{}Details{}",
+                                color::Fg(color::Magenta),
+                                color::Fg(color::Reset)
+                            ),
+                            format!(
+                                "{}Length{}",
+                                color::Fg(color::Cyan),
+                                color::Fg(color::Reset)
+                            )
+                        ]);
+
+                        // Set the table format
+                        table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+
+                        // Capture packets
+                        match rx.next() {
+                            Ok(packet) => {
+                                let ethernet = EthernetPacket::new(packet).unwrap();
+                                let source = ethernet.get_source().to_string();
+                                let destination = ethernet.get_destination().to_string();
+                                let ethertype = ethernet.get_ethertype();
+                                let length = ethernet.packet().len();
+                                let time = Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+
+                                let details =
+                                    if ethertype == pnet::packet::ethernet::EtherTypes::Ipv4 {
+                                        let ipv4 = Ipv4Packet::new(ethernet.payload()).unwrap();
+                                        format!(
+                                            "IPv4 {} -> {}",
+                                            ipv4.get_source(),
+                                            ipv4.get_destination()
+                                        )
+                                    } else {
+                                        format!("{:?}", ethertype)
+                                    };
+
+                                table.add_row(Row::new(vec![
+                                    Cell::new(&format!(
+                                        "{}{}{}",
+                                        color::Fg(color::White),
+                                        time,
+                                        color::Fg(color::Reset)
+                                    )),
+                                    Cell::new(&format!(
+                                        "{}{}{}",
+                                        color::Fg(color::Green),
+                                        source,
+                                        color::Fg(color::Reset)
+                                    )),
+                                    Cell::new(&format!(
+                                        "{}{}{}",
+                                        color::Fg(color::Blue),
+                                        destination,
+                                        color::Fg(color::Reset)
+                                    )),
+                                    Cell::new(&format!(
+                                        "{}{:?}{}",
+                                        color::Fg(color::Yellow),
+                                        ethertype,
+                                        color::Fg(color::Reset)
+                                    )),
+                                    Cell::new(&format!(
+                                        "{}{}{}",
+                                        color::Fg(color::Magenta),
+                                        details,
+                                        color::Fg(color::Reset)
+                                    )),
+                                    Cell::new(&format!(
+                                        "{}{}{}",
+                                        color::Fg(color::Cyan),
+                                        length,
+                                        color::Fg(color::Reset)
+                                    )),
+                                ]));
+
+                                table.printstd();
+                            }
+                            Err(e) => {
+                                println!("An error occurred while reading: {}", e);
+                            }
                         }
+                    } else {
+                        thread::sleep(Duration::from_millis(100));
                     }
                 }
             }
