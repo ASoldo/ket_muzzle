@@ -1,3 +1,5 @@
+![image](https://github.com/user-attachments/assets/360690f3-0657-452e-865a-73f6caf09ca7)
+
 # Ket_Muzzle
 
 Ket_Muzzle is a Rust project that captures and displays network packets from a selected network interface. It uses the pnet crate to capture packets, prettytable to format the output in a table, termion for adding color to the output, and chrono to timestamp each captured packet.
