@@ -90,7 +90,7 @@ fn main() {
                             let destination = ethernet.get_destination().to_string();
                             let ethertype = ethernet.get_ethertype();
                             let length = ethernet.packet().len();
-                            let time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                            let time = Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
 
                             let details = if ethertype == pnet::packet::ethernet::EtherTypes::Ipv4 {
                                 let ipv4 = Ipv4Packet::new(ethernet.payload()).unwrap();
