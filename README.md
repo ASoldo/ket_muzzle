@@ -27,7 +27,7 @@ Clone the repository:
 
 ```sh
 
-git clone <repository-url>
+git clone https://github.com/ASoldo/ket_muzzle.git
 ```
 
 ```sh
