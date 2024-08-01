@@ -1,0 +1,10 @@
+[package]
+name = "ket_muzzle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.38"
+pnet = "0.35.0"
+prettytable = "0.10.0"
+termion = "4.0.2"
